@@ -1,0 +1,19 @@
+{
+  "name": "@flamescape/simplemq",
+  "version": "0.0.1",
+  "description": "A library to simplify using amqplib.",
+  "main": "index.js",
+  "dependencies": {
+    "amqplib": "^0.5.5",
+    "backoff": "^2.5.0",
+    "eventemitter3": "^4.0.0",
+    "uuid": "^3.3.3"
+  },
+  "devDependencies": {},
+  "scripts": {},
+  "private": false,
+  "author": "Gareth Hughes <g_github@flamescape.com>",
+  "homepage": "https://github.com/mikuso/simplemq",
+  "keywords": [],
+  "license": "ISC"
+}
