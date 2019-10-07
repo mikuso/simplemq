@@ -15,20 +15,22 @@ Todo:
 ## RPC Server / Client
 
 ```js
-class Adder () {
+class Adder {
     sum(a, b) { return a + b; }
 }
-
 const {RPCServer, RPCClient} = require('@flamescape/simplemq');
-
 const url = 'amqp://user:pass@127.0.0.1/';
 
-const server = new RPCServer({url});
-server.wrap('rpcQueueName', new Adder());
+async function main() {
+    const server = new RPCServer({url});
+    server.wrap('rpcQueueName', new Adder());
 
-const client = new RPCClient({url})
-const result = await client.call('rpcQueueName', 'sum', [1, 2]);
-console.log(result); // 3
+    const client = new RPCClient({url})
+    await client.open();
+    const result = await client.call('rpcQueueName', 'sum', [1, 2]);
+    console.log(result); // 3
+}
+main();
 ```
 
 # API

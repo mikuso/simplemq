@@ -8,7 +8,7 @@ class RPCClient {
         this.calls = new Map();
     }
 
-    open() {
+    async open() {
         return new Promise((resolve, reject) => {
             if (this.amqp) {
                 return;
