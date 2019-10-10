@@ -1,27 +1,39 @@
-const AMQPConnection = require('./connection');
+const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcserver');
 
 class RPCServer {
     constructor({url}) {
         this.wrapped = [];
+        this.keepAlive = true;
 
-        this.amqp = new AMQPConnection({url});
+        this.amqp = new Connection({url});
+
         this.amqp.on('open', async (channel) => {
-            this.channel = channel;
-            await this._startConsumers().catch(err => {
+            await this._startConsumers(channel).catch(err => {
                 debug(`Error starting consumers:`, err.message);
             });
+        });
+
+        this.amqp.on('close', async () => {
+            if (this.keepAlive) {
+                this.amqp.getChannel().catch((err) => {
+                    debug(`Error reopening channel:`, err);
+                });
+            }
+        });
+
+        this.amqp.getChannel().catch((err)=>{
+            debug(`Failed to get channel:`, err);
         });
     }
 
     async wrap(queueName, host) {
         const wrapped = {queueName, host, consumerTag: null, cancel: null};
         this.wrapped.push(wrapped);
-        if (this.amqp && this.amqp.connected) {
-            await this._startConsumer(wrapped).catch(err => {
-                debug(`Error starting consumer:`, err.message);
-            });
-        }
+        const channel = await this.amqp.getChannel();
+        await this._startConsumer(channel, wrapped).catch(err => {
+            debug(`Error starting consumer:`, err.message);
+        });
     }
 
     async unwrap(queueName, host) {
@@ -52,15 +64,14 @@ class RPCServer {
     // Private methods
     //
 
-    async _startConsumers() {
+    async _startConsumers(channel) {
         return Promise.all(this.wrapped.map(wrapped => {
-            return this._startConsumer(wrapped);
+            return this._startConsumer(channel, wrapped);
         }));
     }
 
-    async _startConsumer(wrapped) {
+    async _startConsumer(channel, wrapped) {
         debug(`Starting consumer for ${wrapped.queueName}`);
-        const channel = this.channel;
 
         await channel.assertQueue(wrapped.queueName, { messageTtl: 1000*30, expires: 1000*30 });
         const consumer = await channel.consume(wrapped.queueName, async (msg) => {
@@ -80,7 +91,7 @@ class RPCServer {
                     };
                 }
 
-                await this.amqp.sendToQueue(
+                channel.sendToQueue(
                     msg.properties.replyTo,
                     Buffer.from(JSON.stringify(response)),
                     {correlationId: msg.properties.correlationId}

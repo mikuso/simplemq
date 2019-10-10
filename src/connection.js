@@ -7,121 +7,90 @@ class Connection extends EventEmitter {
     constructor({url}) {
         super();
         this.url = url;
+    }
 
-        this.keepAlive = true;
-        this.connecting = false;
-        this.connected = false;
-        this.sendToQueueBuffer = [];
+    async getConnection({connect = true} = {}) {
+        if (!this.connection && connect) {
+            this.connection = new Promise((resolve, reject) => {
+                debug(`Opening new connection`);
 
-        this.backoff = backoff.exponential({
-			randomisationFactor: 0.2,
-			initialDelay: 1000,
-			maxDelay: 60*1000
-		});
+                const boff = backoff.exponential({
+                    randomisationFactor: 0.2,
+                    initialDelay: 1000,
+                    maxDelay: 60*1000
+                });
 
-        this.backoff.on('backoff', (count, delay) => {
-            debug(`Back-off #${count+1}. ${delay} ms`);
-        });
+                const connect = async () => {
+                    debug(`Attempting connection`);
+                    try {
+                        const conn = await amqp.connect(this.url);
+                        conn.on('error', (err) => {
+                            debug(`Connection error:`, err);
+                        });
+                        conn.once('close', () => {
+                            debug(`Connection closed`);
+                            this.connection = null;
+                            this.channel = null;
+                            this.emit('close');
+                        });
+                        debug(`Connection open`);
+                        resolve(conn);
+                    } catch (err) {
+                        debug(`Connection attempt failed:`, err);
+                        boff.backoff();
+                    }
+                };
 
-        this.backoff.on('ready', () => this._reconnect());
-        this._reconnect();
+                boff.on('backoff', (count, delay) => {
+                    debug(`Back-off #${count+1}. ${delay} ms`);
+                });
+
+                boff.on('ready', connect);
+                connect();
+
+            });
+        }
+
+        return this.connection;
+    }
+
+    async getChannel() {
+        if (!this.channel) {
+            this.channel = new Promise(async (resolve, reject) => {
+                debug(`Opening new channel`);
+                try {
+                    const conn = await this.getConnection();
+                    const channel = await conn.createChannel();
+                    channel.on('error', (err) => {
+                        debug(`Channel error:`, err);
+                    });
+                    channel.once('close', async () => {
+                        debug(`Channel closed`);
+                        this.channel = null;
+                        const conn = await this.getConnection({connect: false});
+                        if (conn) {
+                            conn.close();
+                        }
+                    });
+                    debug(`Channel open`);
+                    this.emit('open', channel);
+                    resolve(channel);
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        return this.channel;
     }
 
     async shutdown() {
-        this.keepAlive = false;
-        if (this.connection) {
-            console.log('closing connection');
-            return this.connection.close().catch(err => {
+        const conn = await this.getConnection({connect: false});
+        if (conn) {
+            debug('Closing connection');
+            return conn.close().catch(err => {
                 debug(`Error closing connection:`, err);
             });
-        }
-    }
-
-    async sendToQueue(queueName, msg, options) {
-        let done;
-        const sent = new Promise(r => done = r);
-        this.sendToQueueBuffer.push({queueName, msg, options, done});
-        this._flushBuffer();
-        return sent;
-    }
-
-    //
-    // Private methods
-    //
-
-    async _reconnect() {
-        if (this.connecting) {
-            return;
-        }
-        this.connected = false;
-        this.connecting = true;
-        debug('Reconnecting...');
-
-        try {
-            // close any existing connection/channel
-            if (this.connection) {
-                await this.connection.close();
-                this.connection = null;
-            }
-
-            this.connection = await amqp.connect(this.url);
-            this.connection.on('error', this._onError.bind(this, 'connection'));
-            this.connection.on('close', this._onConnectionClose.bind(this));
-            this.channel = await this.connection.createChannel();
-            this.channel.on('error', this._onError.bind(this, 'channel'));
-            this.channel.on('close', this._onChannelClose.bind(this));
-
-            this.connected = true;
-            this.backoff.reset();
-            this._flushBuffer();
-            this.emit('open', this.channel);
-            debug(`Connected`);
-        } catch (err) {
-            if (this.keepAlive) {
-                this.backoff.backoff();
-            }
-        } finally {
-            this.connecting = false;
-        }
-    }
-
-    _onError(subject, err) {
-        debug(`${subject} Error: ${err.message}`);
-    }
-
-    _onConnectionClose(err) {
-        this.connection = null;
-        if (this.channel) {
-            this.channel.removeAllListeners('close');
-            this.channel.close();
-            this.channel = null;
-        }
-        if (this.keepAlive) {
-            debug('Connection closed');
-            this._reconnect();
-        }
-    }
-
-    _onChannelClose(err) {
-        this.channel = null;
-        if (this.connection) {
-            this.connection.removeAllListeners('close');
-            this.connection.close();
-            this.connection = null;
-        }
-        if (this.keepAlive) {
-            debug('Channel closed');
-            this._reconnect();
-        }
-    }
-
-    _flushBuffer() {
-        if (this.connected && this.channel) {
-            while (this.sendToQueueBuffer.length > 0) {
-                const {queueName, msg, options, done} = this.sendToQueueBuffer.shift();
-                this.channel.sendToQueue(queueName, msg, options);
-                done();
-            }
         }
     }
 

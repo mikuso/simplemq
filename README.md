@@ -26,9 +26,11 @@ async function main() {
     server.wrap('rpcQueueName', new Adder());
 
     const client = new RPCClient({url})
-    await client.open();
     const result = await client.call('rpcQueueName', 'sum', [1, 2]);
     console.log(result); // 3
+
+    client.close();
+    server.close();
 }
 main();
 ```
@@ -43,7 +45,6 @@ main();
   - [server.close()](#serverclose)
 - [Class: simplemq.RPCClient](#class-rpcclient)
   - [new simplemq.RPCClient(options)](#new-simplemqrpcclientoptions)
-  - [client.open()](#clientopen)
   - [client.call(queueName, method[, args][, options])](#clientcall)
   - [client.close()](#clientclose)
 
