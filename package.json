@@ -1,6 +1,6 @@
 {
   "name": "@flamescape/simplemq",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "A library to simplify using amqplib.",
   "main": "index.js",
   "dependencies": {
