@@ -12,7 +12,7 @@ class Connection extends EventEmitter {
     async getConnection({connect = true} = {}) {
         if (!this.connection && connect) {
             this.connection = new Promise((resolve, reject) => {
-                debug(`Opening new connection`);
+                debug(`New connection required`);
 
                 const boff = backoff.exponential({
                     randomisationFactor: 0.2,
@@ -57,7 +57,7 @@ class Connection extends EventEmitter {
     async getChannel() {
         if (!this.channel) {
             this.channel = new Promise(async (resolve, reject) => {
-                debug(`Opening new channel`);
+                debug(`New channel required`);
                 try {
                     const conn = await this.getConnection();
                     const channel = await conn.createChannel();

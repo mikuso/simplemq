@@ -35,6 +35,25 @@ async function main() {
 main();
 ```
 
+## PubSub
+
+```js
+const {PubSub} = require('@flamescape/simplemq');
+const url = 'amqp://user:pass@127.0.0.1/';
+
+async function main() {
+    const pubsub = new PubSub({url});
+
+    const consumer = await pubsub.consume('testQ', msg => {
+        console.log(msg.json); // {hello: 'world'}
+        msg.ack();
+    });
+
+    await pubsub.publish('', 'testQ', {hello:'world'});
+}
+main();
+```
+
 # API
 
 - [Class: simplemq.RPCServer](#class-rpcserver)
@@ -47,7 +66,14 @@ main();
   - [new simplemq.RPCClient(options)](#new-simplemqrpcclientoptions)
   - [client.call(queueName, method[, args][, options])](#clientcall)
   - [client.close()](#clientclose)
+- [Class: simplemq.PubSub](#class-pubsub)
+  - [new simplemq.PubSub(options)](#new-simplemqpubsuboptions)
+  - [pubsub.consume(queueName, callback)](#pubsubconsume)
+  - [pubsub.publish(exchange, routingKey, content[, options])](#pubsubpublish)
+  - [pubsub.close()](#[pubsubclose)
 
 ### Class: RPCServer
 
 ### Class: RPCClient
+
+### Class: PubSub

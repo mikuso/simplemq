@@ -1,5 +1,6 @@
 module.exports = {
-    RPCServer: require('./src/server'),
-    RPCClient: require('./src/client'),
+    RPCServer: require('./src/rpcserver'),
+    RPCClient: require('./src/rpcclient'),
     Connection: require('./src/connection'),
+    PubSub: require('./src/pubsub'),
 };
