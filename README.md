@@ -5,9 +5,9 @@ A library to simplify using amqplib.
 Features:
 - Reliable (self-repairing) Connections
 - RPC Client/Server implementation
+- Pub/Sub implementation
 
 Todo:
-- Pub/Sub implementation
 - Write API docs
 
 # Usage
