@@ -110,12 +110,36 @@ class PubSub {
                 options.contentType = 'application/json';
             } catch (err) {}
         }
+        if (!options.timestamp) {
+            options.timestamp = Date.now();
+        }
         return channel.publish(exchange, routingKey, content, options);
     }
 
     async sendToQueue(queue, content, options) {
         return this.publish('', queue, content, options);
     }
+
+    async prefetch(count, global = false) {
+        const channel = await this.getChannel();
+        return channel.prefetch(count, global = false);
+    }
+
+    async recover() {
+        const channel = await this.getChannel();
+        return channel.recover();
+    }
+
+    async ackAll() {
+        const channel = await this.getChannel();
+        return channel.ackAll();
+    }
+
+    async nackAll(requeue = undefined) {
+        const channel = await this.getChannel();
+        return channel.nackAll(requeue);
+    }
+
 
 
     //
