@@ -6,6 +6,7 @@ Features:
 - Reliable (self-repairing) Connections
 - RPC Client/Server implementation
 - Pub/Sub implementation
+- Automatic JSON (de-)serialisation
 
 Todo:
 - Write API docs
@@ -44,12 +45,12 @@ const url = 'amqp://user:pass@127.0.0.1/';
 async function main() {
     const pubsub = new PubSub({url});
 
-    const consumer = await pubsub.consume('testQ', msg => {
+    const consumer = await pubsub.consume('testQueue', msg => {
         console.log(msg.json); // {hello: 'world'}
         msg.ack();
     });
 
-    await pubsub.publish('', 'testQ', {hello:'world'});
+    await pubsub.publish('', 'testQueue', {hello:'world'});
 }
 main();
 ```
