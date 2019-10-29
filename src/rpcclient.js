@@ -75,6 +75,17 @@ class RPCClient {
         this.amqp.shutdown();
     }
 
+    bind(queueName) {
+        const self = this;
+        return new Proxy({}, {
+            get: function(target, prop, receiver) {
+                return function(...args){
+                    return self.call(queueName, prop, args);
+                };
+            }
+        });
+    }
+
     async call(queueName, method, args = [], options = {}) {
         if (!this.keepAlive) {
             throw Error(`Connection closed`);

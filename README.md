@@ -30,6 +30,11 @@ async function main() {
     const result = await client.call('rpcQueueName', 'sum', [1, 2]);
     console.log(result); // 3
 
+    // - or -
+    const adder = client.bind('rpcQueueName');
+    const result2 = await adder.sum(1, 2);
+    console.log(result2); // 3
+
     client.close();
     server.close();
 }
@@ -66,6 +71,7 @@ main();
 - [Class: simplemq.RPCClient](#class-rpcclient)
   - [new simplemq.RPCClient(options)](#new-simplemqrpcclientoptions)
   - [client.call(queueName, method[, args][, options])](#clientcall)
+  - [client.bind(queueName)](#clientbind)
   - [client.close()](#clientclose)
 - [Class: simplemq.PubSub](#class-pubsub)
   - [new simplemq.PubSub(options)](#new-simplemqpubsuboptions)
