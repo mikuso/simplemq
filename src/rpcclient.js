@@ -99,9 +99,14 @@ class RPCClient {
     }
 
     async call(queueName, method, args = [], options = {}) {
+        if (!Array.isArray(args)) {
+            throw new TypeError(`args must be an Array`);
+        }
+
         if (!this.keepAlive) {
             throw Error(`Connection closed`);
         }
+
         // don't call until receive channel is set up
         await this._isListening;
 
