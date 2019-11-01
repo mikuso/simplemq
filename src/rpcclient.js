@@ -36,6 +36,10 @@ class RPCClient {
                 try {
                     const body = JSON.parse(msg.content.toString('utf8'));
                     if (body.ack) {
+                        if (!call.ack) {
+                            // call doesn't always require ack (if timeout = 0)
+                            return;
+                        }
                         return call.ack();
                     } else {
                         this.calls.delete(msg.properties.correlationId);
