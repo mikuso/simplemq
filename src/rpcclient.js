@@ -3,10 +3,13 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcclient');
 
 class RPCClient {
-    constructor({url}) {
+    constructor({url, timeout = 1000*30, ackTimeout = 1000*2} = {}) {
         this.url = url;
         this.keepAlive = true;
         this.calls = new Map();
+
+        this.timeout = timeout;
+        this.ackTimeout = ackTimeout;
 
         let ready;
         this._isListening = new Promise(r => { ready = r; });
@@ -16,7 +19,7 @@ class RPCClient {
         });
 
         this.amqp.on('open', async (channel) => {
-            const replyQueue = await channel.assertQueue(null, { messageTtl: 1000*30, expires: 1000*30 });
+            const replyQueue = await channel.assertQueue(null, { messageTtl: this.ackTimeout, expires: 1000*30 });
             this.replyQueueName = replyQueue.queue;
 
             await channel.consume(replyQueue.queue, (msg) => {
@@ -29,18 +32,23 @@ class RPCClient {
                     debug(`Ignoring response for unknown call ${msg.properties.correlationId}`);
                     return;
                 }
-                this.calls.delete(msg.properties.correlationId);
 
                 try {
                     const body = JSON.parse(msg.content.toString('utf8'));
-                    if (body.error) {
-                        const err = Error(body.error.message);
-                        err.stack = body.error.stack;
-                        err.code = body.error.code;
-                        err.details = body.error.details;
-                        return call.reject(err);
+                    if (body.ack) {
+                        return call.ack();
                     } else {
-                        return call.resolve(body.result);
+                        this.calls.delete(msg.properties.correlationId);
+
+                        if (body.error) {
+                            const err = Error(body.error.message);
+                            err.stack = body.error.stack;
+                            err.code = body.error.code;
+                            err.details = body.error.details;
+                            return call.reject(err);
+                        } else {
+                            return call.resolve(body.result);
+                        }
                     }
                 } catch (err) {
                     return call.reject(err);
@@ -93,7 +101,8 @@ class RPCClient {
         // don't call until receive channel is set up
         await this._isListening;
 
-        const timeout = options.timeout || 1000*10;
+        const ackTimeout = options.ackTimeout || this.ackTimeout;
+        const timeout = options.timeout || this.timeout;
 
         const id = uuid.v4();
 
@@ -104,10 +113,20 @@ class RPCClient {
         });
         this.calls.set(id, call);
 
+        if (ackTimeout) {
+            // set ack timeout
+            let ato = setTimeout(() => {
+                call.reject(Error("RPC ACK Timeout"));
+            }, ackTimeout);
+            call.ack = () => {
+                clearTimeout(ato);
+            };
+        }
+
         if (timeout) {
             // set reply timeout
             setTimeout(() => {
-                call.reject(Error("RPC Timeout"));
+                call.reject(Error("RPC Response Timeout"));
             }, timeout);
         }
 
@@ -121,7 +140,7 @@ class RPCClient {
                 method,
                 args
             })), {
-                expiration: timeout,
+                expiration: ackTimeout,
                 replyTo: this.replyQueueName,
                 correlationId: id
             });

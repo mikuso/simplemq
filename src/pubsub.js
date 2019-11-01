@@ -2,7 +2,7 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:pubsub');
 
 class PubSub {
-    constructor({url}) {
+    constructor({url} = {}) {
         this.url = url;
         this.keepAlive = true;
         this.consumers = [];

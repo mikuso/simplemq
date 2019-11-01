@@ -2,7 +2,7 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcserver');
 
 class RPCServer {
-    constructor({url}) {
+    constructor({url} = {}) {
         this.wrapped = [];
         this.keepAlive = true;
 
@@ -78,6 +78,13 @@ class RPCServer {
             try {
                 if (!msg) { return; }
 
+                // acknowledge call
+                channel.sendToQueue(
+                    msg.properties.replyTo,
+                    Buffer.from(JSON.stringify({ack:true})),
+                    {correlationId: msg.properties.correlationId}
+                );
+
                 const body = JSON.parse(msg.content.toString('utf8'));
                 const response = {};
                 try {
@@ -91,6 +98,7 @@ class RPCServer {
                     };
                 }
 
+                // send result
                 channel.sendToQueue(
                     msg.properties.replyTo,
                     Buffer.from(JSON.stringify(response)),
