@@ -1,5 +1,6 @@
 const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcserver');
+const EventEmitter = require('eventemitter3');
 
 class RPCServer {
     constructor({url} = {}) {
@@ -28,12 +29,14 @@ class RPCServer {
     }
 
     async wrap(queueName, host) {
-        const wrapped = {queueName, host, consumerTag: null, cancel: null};
+        const events = new EventEmitter();
+        const wrapped = {queueName, host, consumerTag: null, cancel: null, events};
         this.wrapped.push(wrapped);
         const channel = await this.amqp.getChannel();
         await this._startConsumer(channel, wrapped).catch(err => {
             debug(`Error starting consumer:`, err.message);
         });
+        return events;
     }
 
     async unwrap(queueName, host) {
@@ -41,6 +44,7 @@ class RPCServer {
         if (wrapped) {
             const idx = this.wrapped.indexOf(wrapped);
             if (idx !== -1) { this.wrapped.splice(idx, 1); }
+            wrapped.events.removeAllListeners();
             if (wrapped.cancel && wrapped.consumerTag) {
                 await wrapped.cancel().catch(err => {
                     console.log(`Error cancelleing wrap`, err);
@@ -88,6 +92,11 @@ class RPCServer {
                 const body = JSON.parse(msg.content.toString('utf8'));
                 const response = {};
                 try {
+                    wrapped.events.emit('call', {
+                        method: body.method,
+                        args: body.args
+                    });
+
                     response.result = await wrapped.host[body.method](...body.args);
                 } catch (err) {
                     response.error = {
@@ -97,6 +106,12 @@ class RPCServer {
                         details: err.details
                     };
                 }
+
+                wrapped.events.emit('response', {
+                    method: body.method,
+                    args: body.args,
+                    response: response
+                });
 
                 // send result
                 channel.sendToQueue(
