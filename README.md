@@ -50,7 +50,7 @@ const url = 'amqp://user:pass@127.0.0.1/';
 async function main() {
     const pubsub = new PubSub({url});
 
-    const consumer = await pubsub.consume('testQueue', msg => {
+    const consumer = await pubsub.consume('testQueue', {prefetch:1}, msg => {
         console.log(msg.json); // {hello: 'world'}
         msg.ack();
     });
@@ -75,7 +75,7 @@ main();
   - [client.close()](#clientclose)
 - [Class: simplemq.PubSub](#class-pubsub)
   - [new simplemq.PubSub(options)](#new-simplemqpubsuboptions)
-  - [pubsub.consume(queueName, callback)](#pubsubconsume)
+  - [pubsub.consume(queueName[, options], callback)](#pubsubconsume)
   - [pubsub.publish(exchange, routingKey, content[, options])](#pubsubpublish)
   - [pubsub.close()](#[pubsubclose)
 

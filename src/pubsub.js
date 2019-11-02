@@ -35,11 +35,19 @@ class PubSub {
         this.amqp.shutdown();
     }
 
-    async consume(queueName, callback) {
+    async consume(queueName, options, callback) {
+        if (callback === undefined && options instanceof Function) {
+            callback = options;
+            options = {};
+        }
+
+        options = options || {};
+
         const consumer = {
             queueName,
             callback,
-            alive: false
+            alive: false,
+            options
         };
 
         this.consumers.push(consumer);
@@ -153,6 +161,10 @@ class PubSub {
         consumer.alive = true;
 
         const channel = await this.amqp.getChannel();
+
+        if (consumer.options && consumer.options.prefetch) {
+            channel.prefetch(consumer.options.prefetch);
+        }
 
         const cons = await channel.consume(consumer.queueName, async (data) => {
             const msg = {};
