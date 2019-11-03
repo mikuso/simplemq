@@ -166,6 +166,26 @@ class PubSub {
             channel.prefetch(consumer.options.prefetch);
         }
 
+        // If an object was provided for a queue name, it is assumed that a temporary queue is required.
+        // This could be useful if a connection is interrupted for too long, as temporary queues could expire.
+        // This feature will create a new temporary queue upon resuming the consumer, so we're not listening on nothing.
+        // Admittedly, any messages held in any previous temporary queue will be lost.
+        if (typeof consumer.queueName === 'object') {
+            let {expires, exchange, routingKey} = consumer.queueName;
+            if (expires === undefined) {
+                expires = 1000*30;
+            }
+            if (routingKey === undefined) {
+                routingKey = '#';
+            }
+            const queueOptions = {};
+            if (expires) queueOptions.expires = expires;
+            // Create a temporary queue and bind it to the exchange
+            const queue = await channel.assertQueue(null, queueOptions);
+            await channel.bindQueue(queue.queue, exchange, routingKey);
+            queueName = queue.queue;
+        }
+
         const cons = await channel.consume(consumer.queueName, async (data) => {
             const msg = {};
             let resolved = false;
