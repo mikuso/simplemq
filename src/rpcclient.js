@@ -91,6 +91,9 @@ class RPCClient {
         const self = this;
         return new Proxy({}, {
             get: function(target, prop, receiver) {
+                if (prop === 'toJSON') {
+                    return () => { return; };
+                }
                 return function(...args){
                     return self.call(queueName, prop, args);
                 };
