@@ -1,6 +1,8 @@
 const Connection = require('./connection');
 const debug = require('debug')('simplemq:pubsub');
 const EventEmitter = require('eventemitter3');
+const RPCServer = require('./rpcserver');
+const RPCClient = require('./rpcclient');
 
 class PubSub extends EventEmitter {
     constructor({url} = {}) {
@@ -146,6 +148,23 @@ class PubSub extends EventEmitter {
         return channel.nackAll(requeue);
     }
 
+    async rpcServer(queueName, host, options = {}) {
+        await this.assertExchange('simplemq.rpc', 'topic');
+        const server = new RPCServer(this);
+        await server.init({
+            queueName,
+            host,
+            options
+        });
+        return server;
+    }
+
+    async rpcClient(options) {
+        await this.assertExchange('simplemq.rpc', 'topic');
+        const client = new RPCClient(this, options);
+        await client.init();
+        return client;
+    }
 
 
     //

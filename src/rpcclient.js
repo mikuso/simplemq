@@ -3,88 +3,75 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcclient');
 
 class RPCClient {
-    constructor({url, timeout = 1000*30, ackTimeout = 1000*2} = {}) {
-        this.url = url;
-        this.keepAlive = true;
+    constructor(pubsub, options = {}) {
+        this.pubsub = pubsub;
+        this.options = options;
+        this.replyConsumer = null;
         this.calls = new Map();
+        this.replyId = uuid.v4();
 
-        this.timeout = timeout;
-        this.ackTimeout = ackTimeout;
-
-        let ready;
-        this._isListening = new Promise(r => { ready = r; });
-
-        this.amqp = new Connection({
-            url: this.url
-        });
-
-        this.amqp.on('open', async (channel) => {
-            const replyQueue = await channel.assertQueue(null, { messageTtl: this.ackTimeout, expires: 1000*30 });
-            this.replyQueueName = replyQueue.queue;
-
-            await channel.consume(replyQueue.queue, (msg) => {
-                if (!msg) {
-                    return;
-                }
-                channel.ack(msg);
-                const call = this.calls.get(msg.properties.correlationId);
-                if (!call) {
-                    debug(`Ignoring response for unknown call ${msg.properties.correlationId}`);
-                    return;
-                }
-
-                try {
-                    const body = JSON.parse(msg.content.toString('utf8'));
-                    if (body.ack) {
-                        if (!call.ack) {
-                            // call doesn't always require ack (if timeout = 0)
-                            return;
-                        }
-                        return call.ack();
-                    } else {
-                        this.calls.delete(msg.properties.correlationId);
-
-                        if (body.error) {
-                            const err = Error(body.error.message);
-                            err.stack = body.error.stack;
-                            err.code = body.error.code;
-                            err.details = body.error.details;
-                            return call.reject(err);
-                        } else {
-                            return call.resolve(body.result);
-                        }
-                    }
-                } catch (err) {
-                    return call.reject(err);
-                }
-            });
-
-            ready();
-        });
-
-        this.amqp.on('close', async () => {
-            this._isListening = new Promise(r => { ready = r; });
-
-            if (this.keepAlive) {
-                this.amqp.getChannel().catch((err) => {
-                    debug(`Error reopening channel:`, err);
-                });
-            }
-        });
-
-        this.init().catch((err)=>{
-            debug(`Failed to get init:`, err);
-        });
+        if (this.options.timeout == null) {
+            this.options.timeout = 1000*30;
+        }
+        if (this.options.ackTimeout == null) {
+            this.options.ackTimeout = 1000*2;
+        }
     }
 
     async init() {
-        await this.amqp.getChannel();
-        await this._isListening;
+        this.replyConsumer = await this.pubsub.consume({
+            expires: this.options.timeout,
+            messageTtl: this.options.ackTimeout,
+            exchange: 'simplemq.rpc',
+            routingKey: this.replyId
+        }, msg => {
+            if (!msg) return;
+            msg.ack();
+
+            const call = this.calls.get(msg.properties.correlationId);
+            if (!call) {
+                debug(`Ignoring response for unknown call ${msg.properties.correlationId}`);
+                return;
+            }
+
+            try {
+                const body = msg.json;
+                if (body.ack) {
+                    // This is an acknowledgement that the call has been received
+                    if (!call.ack) {
+                        // but the call may not have asked for it (e.g. if timeout = 0)
+                        return;
+                    }
+                    return call.ack();
+                } else {
+                    // This is the call result
+                    this.calls.delete(msg.properties.correlationId);
+
+                    if (body.error) {
+                        // The call resulted in an error
+                        const err = Error(body.error.message);
+                        err.stack = body.error.stack;
+                        err.code = body.error.code;
+                        err.details = body.error.details;
+                        return call.reject(err);
+                    } else {
+                        // The call succeeded
+                        return call.resolve(body.result);
+                    }
+                }
+            } catch (err) {
+                // Processing response failed.
+                // Return error to the caller.
+                return call.reject(err);
+            }
+        });
     }
 
+
     close() {
-        this.keepAlive = false;
-        this.amqp.shutdown();
+        if (this.replyConsumer) {
+            this.replyConsumer.cancel();
+        }
     }
 
     bind(queueName) {
@@ -106,15 +93,9 @@ class RPCClient {
             throw new TypeError(`args must be an Array`);
         }
 
-        if (!this.keepAlive) {
-            throw Error(`Connection closed`);
-        }
-
-        // don't call until receive channel is set up
-        await this._isListening;
-
-        const ackTimeout = options.ackTimeout || this.ackTimeout;
-        const timeout = options.timeout || this.timeout;
+        // optional options overrides
+        const ackTimeout = options.ackTimeout || this.options.ackTimeout;
+        const timeout = options.timeout || this.options.timeout;
 
         const id = uuid.v4();
 
@@ -142,23 +123,16 @@ class RPCClient {
             }, timeout);
         }
 
-        if (!this.keepAlive) {
-            return call.reject(Error(`Connection closed`));
-        }
-
-        const channel = await this.amqp.getChannel();
-        try {
-            await channel.sendToQueue(queueName, Buffer.from(JSON.stringify({
-                method,
-                args
-            })), {
-                expiration: ackTimeout,
-                replyTo: this.replyQueueName,
-                correlationId: id
-            });
-        } catch (err) {
+        this.pubsub.sendToQueue(queueName, {
+            method,
+            args
+        }, {
+            expiration: ackTimeout,
+            replyTo: this.replyId,
+            correlationId: id
+        }).catch(err => {
             call.reject(err);
-        }
+        });
 
         return call.done;
     }

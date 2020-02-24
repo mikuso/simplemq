@@ -2,102 +2,44 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcserver');
 const EventEmitter = require('eventemitter3');
 
-class RPCServer {
-    constructor({url} = {}) {
-        this.wrapped = [];
-        this.keepAlive = true;
-
-        this.amqp = new Connection({url});
-
-        this.amqp.on('open', async (channel) => {
-            await this._startConsumers(channel).catch(err => {
-                debug(`Error starting consumers:`, err.message);
-            });
-        });
-
-        this.amqp.on('close', async () => {
-            if (this.keepAlive) {
-                this.amqp.getChannel().catch((err) => {
-                    debug(`Error reopening channel:`, err);
-                });
-            }
-        });
-
-        this.amqp.getChannel().catch((err)=>{
-            debug(`Failed to get channel:`, err);
-        });
+class RPCServer extends EventEmitter {
+    constructor(pubsub) {
+        super();
+        this.pubsub = pubsub;
+        this.consumer = null;
     }
 
-    async wrap(queueName, host) {
-        const events = new EventEmitter();
-        const wrapped = {queueName, host, consumerTag: null, cancel: null, events};
-        this.wrapped.push(wrapped);
-        const channel = await this.amqp.getChannel();
-        await this._startConsumer(channel, wrapped).catch(err => {
-            debug(`Error starting consumer:`, err.message);
-        });
-        return events;
-    }
-
-    async unwrap(queueName, host) {
-        const wrapped = this.wrapped.find(w => w.queueName === queueName && host === host);
-        if (wrapped) {
-            const idx = this.wrapped.indexOf(wrapped);
-            if (idx !== -1) { this.wrapped.splice(idx, 1); }
-            wrapped.events.removeAllListeners();
-            if (wrapped.cancel && wrapped.consumerTag) {
-                await wrapped.cancel().catch(err => {
-                    console.log(`Error cancelleing wrap`, err);
-                });
-            }
+    async init({queueName, host, options}) {
+        if (this.consumer) {
+            throw Error(`Consumer already initiated`);
         }
-    }
 
-    async unwrapAll() {
-        return Promise.all([...this.wrapped].map(wrapped => {
-            return this.unwrap(wrapped.queueName, wrapped.host);
-        }));
-    }
+        await this.pubsub.assertQueue(queueName, {
+            messageTtl: options.queueMessageTtl || 1000*30,
+            expires: options.queueExpires || 1000*30
+        });
 
-    close() {
-        this.unwrapAll();
-        this.amqp.shutdown();
-    }
-
-    //
-    // Private methods
-    //
-
-    async _startConsumers(channel) {
-        return Promise.all(this.wrapped.map(wrapped => {
-            return this._startConsumer(channel, wrapped);
-        }));
-    }
-
-    async _startConsumer(channel, wrapped) {
-        debug(`Starting consumer for ${wrapped.queueName}`);
-
-        await channel.assertQueue(wrapped.queueName, { messageTtl: 1000*30, expires: 1000*30 });
-        const consumer = await channel.consume(wrapped.queueName, async (msg) => {
+        this.consumer = await this.pubsub.consume(queueName, async (msg) => {
             try {
                 if (!msg) { return; }
+                msg.ack();
 
                 // acknowledge call
-                channel.sendToQueue(
+                this.pubsub.sendToQueue(
                     msg.properties.replyTo,
                     Buffer.from(JSON.stringify({ack:true})),
                     {correlationId: msg.properties.correlationId}
-                );
+                ).catch(()=>{}); // ignore failure sending acknowledgement
 
-                const body = JSON.parse(msg.content.toString('utf8'));
+                const body = msg.json;
                 const response = {};
                 try {
-                    wrapped.events.emit('call', {
+                    this.emit('call', {
                         method: body.method,
                         args: body.args
                     });
 
-                    response.result = await wrapped.host[body.method](...body.args);
+                    response.result = await host[body.method](...body.args);
                 } catch (err) {
                     response.error = {
                         message: err.message,
@@ -107,32 +49,30 @@ class RPCServer {
                     };
                 }
 
-                wrapped.events.emit('response', {
+                this.emit('response', {
                     method: body.method,
                     args: body.args,
                     response: response
                 });
 
                 // send result
-                channel.sendToQueue(
+                this.pubsub.publish(
+                    'simplemq.rpc',
                     msg.properties.replyTo,
-                    Buffer.from(JSON.stringify(response)),
+                    response,
                     {correlationId: msg.properties.correlationId}
                 );
-
-                await channel.ack(msg);
             } catch (err) {
-                debug(`Error consuming message`, err.message);
+                debug(`Error consuming RPC message:`, err.message);
             }
         });
+    }
 
-        wrapped.consumerTag = consumer.consumerTag;
-
-        wrapped.cancel = () => {
-            return channel.cancel(wrapped.consumerTag).catch(err => {
-                debug(`Error cancelling consumer:`, err.message);
-            });
-        };
+    close() {
+        if (this.consumer) {
+            this.consumer.cancel();
+        }
+        this.removeAllListeners();
     }
 }
 
