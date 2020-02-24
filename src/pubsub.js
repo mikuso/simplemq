@@ -11,18 +11,18 @@ class PubSub extends EventEmitter {
         this.keepAlive = true;
         this.consumers = [];
 
-        this.amqp = new Connection({
+        this.connection = new Connection({
             url: this.url
         });
 
-        this.amqp.on('open', async () => {
+        this.connection.on('open', async () => {
             this._resumeConsumers();
         });
 
-        this.amqp.on('close', async () => {
+        this.connection.on('close', async () => {
             this.consumers.forEach(c=>{c.alive = false;});
             if (this.keepAlive) {
-                this.amqp.getChannel().catch((err) => {
+                this.connection.getChannel().catch((err) => {
                     debug(`Error reopening channel:`, err);
                 });
             }
@@ -32,7 +32,7 @@ class PubSub extends EventEmitter {
     async close() {
         this.keepAlive = false;
         await Promise.all(this.consumers.slice(0).map(c => c.cancel()));
-        this.amqp.shutdown();
+        this.connection.shutdown();
     }
 
     async consume(queueName, options, callback) {
@@ -56,62 +56,62 @@ class PubSub extends EventEmitter {
     }
 
     async assertQueue(queue, options) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.assertQueue(queue, options);
     }
 
     async checkQueue(queue) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.checkQueue(queue);
     }
 
     async deleteQueue(queue, options) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.deleteQueue(queue, options);
     }
 
     async purgeQueue(queue) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.purgeQueue(queue);
     }
 
     async bindQueue(queue, source, pattern, args) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.bindQueue(queue, source, pattern, args);
     }
 
     async unbindQueue(queue, source, pattern, args) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.unbindQueue(queue, source, pattern, args);
     }
 
     async assertExchange(exchange, type, options) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return await channel.assertExchange(exchange, type, options);
     }
 
     async checkExchange(exchange) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.checkExchange(exchange);
     }
 
     async deleteExchange(exchange, options) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.deleteExchange(exchange, options);
     }
 
     async bindExchange(destination, source, pattern, args) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.bindExchange(destination, source, pattern, args);
     }
 
     async unbindExchange(destination, source, pattern, args) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         return channel.unbindExchange(destination, source, pattern, args);
     }
 
     async publish(exchange, routingKey, content, options = {}) {
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
         if (!(content instanceof Buffer)) {
             try {
                 content = Buffer.from(JSON.stringify(content));
@@ -177,7 +177,7 @@ class PubSub extends EventEmitter {
         }
         consumer.alive = true;
 
-        const channel = await this.amqp.getChannel();
+        const channel = await this.connection.getChannel();
 
         if (consumer.options && consumer.options.prefetch) {
             channel.prefetch(consumer.options.prefetch);
