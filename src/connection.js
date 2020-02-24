@@ -25,7 +25,7 @@ class Connection extends EventEmitter {
                     try {
                         const conn = await amqp.connect(this.url);
                         conn.on('error', (err) => {
-                            debug(`Connection error:`, err);
+                            debug(`Connection error:`, err.message);
                         });
                         conn.once('close', () => {
                             debug(`Connection closed`);
@@ -36,7 +36,7 @@ class Connection extends EventEmitter {
                         debug(`Connection open`);
                         resolve(conn);
                     } catch (err) {
-                        debug(`Connection attempt failed:`, err);
+                        debug(`Connection attempt failed:`, err.message);
                         boff.backoff();
                     }
                 };
@@ -62,15 +62,11 @@ class Connection extends EventEmitter {
                     const conn = await this.getConnection();
                     const channel = await conn.createChannel();
                     channel.on('error', (err) => {
-                        debug(`Channel error:`, err);
+                        debug(`Channel error:`, err.message);
                     });
                     channel.once('close', async () => {
                         debug(`Channel closed`);
                         this.channel = null;
-                        const conn = await this.getConnection({connect: false});
-                        if (conn) {
-                            conn.close();
-                        }
                     });
                     debug(`Channel open`);
                     this.emit('open', channel);
@@ -89,7 +85,7 @@ class Connection extends EventEmitter {
         if (conn) {
             debug('Closing connection');
             return conn.close().catch(err => {
-                debug(`Error closing connection:`, err);
+                debug(`Error closing connection:`, err.message);
             });
         }
     }

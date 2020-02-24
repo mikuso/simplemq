@@ -1,8 +1,10 @@
 const Connection = require('./connection');
 const debug = require('debug')('simplemq:pubsub');
+const EventEmitter = require('eventemitter3');
 
-class PubSub {
+class PubSub extends EventEmitter {
     constructor({url} = {}) {
+        super();
         this.url = url;
         this.keepAlive = true;
         this.consumers = [];
@@ -25,7 +27,8 @@ class PubSub {
         });
 
         this.amqp.getChannel().catch((err)=>{
-            debug(`Failed to get init:`, err);
+            debug(`Failed to open initial channel`);
+            this.emit('error', err);
         });
     }
 
@@ -50,8 +53,8 @@ class PubSub {
             options
         };
 
-        this.consumers.push(consumer);
         await this._resumeConsumer(consumer);
+        this.consumers.push(consumer);
         return consumer;
     }
 
@@ -188,43 +191,56 @@ class PubSub {
             queueName = queue.queue;
         }
 
-        const cons = await channel.consume(queueName, async (data) => {
-            const msg = {};
-            let resolved = false;
-            msg.ack = (allUpTo = false) => {
-                resolved = true;
-                channel.ack(data, allUpTo);
-            };
-            msg.nack = (allUpTo = false, requeue = true) => {
-                resolved = true;
-                channel.nack(data, allUpTo, requeue);
-            };
-            msg.properties = data.properties;
-            msg.fields = data.fields;
-            msg.body = data.content;
-            if (data.properties.contentType === 'application/json') {
-                try {
-                    msg.json = JSON.parse(msg.body.toString('utf8'));
-                } catch (err) {}
-            }
-            try {
-                await consumer.callback(msg);
-            } catch (err) {
-                if (!resolved) {
-                    debug(`Message nack'd due to callback error:`, err);
-                    msg.nack();
-                } else {
-                    debug(`Swallowed error after ack/nack:`, err);
+        let cons, ctag;
+        try {
+            cons = await channel.consume(queueName, async (data) => {
+                const msg = {};
+                let resolved = false;
+                msg.ack = (allUpTo = false) => {
+                    resolved = true;
+                    channel.ack(data, allUpTo);
+                };
+                msg.nack = (allUpTo = false, requeue = true) => {
+                    resolved = true;
+                    channel.nack(data, allUpTo, requeue);
+                };
+                msg.properties = data.properties;
+                msg.fields = data.fields;
+                msg.body = data.content;
+                if (data.properties.contentType === 'application/json') {
+                    try {
+                        msg.json = JSON.parse(msg.body.toString('utf8'));
+                    } catch (err) {}
                 }
-            }
-        });
-        const ctag = cons.consumerTag;
+                try {
+                    await consumer.callback(msg);
+                } catch (err) {
+                    if (!resolved) {
+                        debug(`Message nack'd due to callback error:`, err);
+                        msg.nack();
+                    } else {
+                        debug(`Swallowed error after ack/nack:`, err);
+                    }
+                }
+            });
+
+            ctag = cons.consumerTag;
+        } catch (err) {
+            // Error resuming consumer; perhaps the queue no longer exists?
+            // Stop auto-subscribing the consumer and emit an error on the pubsub object.
+            this._unregisterConsumer(consumer);
+            this.emit('error', err);
+        }
 
         consumer.cancel = () => {
-            const idx = this.consumers.indexOf(consumer);
-            if (idx !== -1) { this.consumers.splice(idx, 1); }
+            this._unregisterConsumer(consumer);
             return channel.cancel(ctag).catch(()=>{});
         };
+    }
+
+    _unregisterConsumer(consumer) {
+        const idx = this.consumers.indexOf(consumer);
+        if (idx !== -1) { this.consumers.splice(idx, 1); }
     }
 
     async _resumeConsumers() {
