@@ -25,11 +25,6 @@ class PubSub extends EventEmitter {
                 });
             }
         });
-
-        this.amqp.getChannel().catch((err)=>{
-            debug(`Failed to open initial channel`);
-            this.emit('error', err);
-        });
     }
 
     async close() {
