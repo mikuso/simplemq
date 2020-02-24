@@ -1,6 +1,6 @@
 # Description
 
-A library to simplify using amqplib.
+A library built on the back of amqplib, adding some powerful opinionated features.
 
 Features:
 - Reliable (self-repairing) Connections
@@ -13,74 +13,109 @@ Todo:
 
 # Usage
 
+## Publish / Subscribe
+
+```js
+const simplemq = require('@flamescape/simplemq');
+const url = 'amqp://user:pass@127.0.0.1/';
+
+async function main() {
+    const mq = simplemq({url});
+
+    const consumer = await mq.consume('testQueue', {prefetch:1}, msg => {
+        console.log(msg.json); // {hello: 'world'}
+        msg.ack();
+    });
+
+    await mq.sendToQueue('testQueue', {hello:'world'});
+}
+main();
+```
+
 ## RPC Server / Client
 
 ```js
 class Adder {
     sum(a, b) { return a + b; }
 }
-const {RPCServer, RPCClient} = require('@flamescape/simplemq');
+const simplemq = require('@flamescape/simplemq');
 const url = 'amqp://user:pass@127.0.0.1/';
 
 async function main() {
-    const server = new RPCServer({url});
-    server.wrap('rpcQueueName', new Adder());
+    const mq = simplemq({url});
 
-    const client = new RPCClient({url})
-    const result = await client.call('rpcQueueName', 'sum', [1, 2]);
-    console.log(result); // 3
+    const server = await mq.rpcServer('adder', new Adder());
+    const client = await mq.rpcClient();
+
+    // either:
+    const result1 = await client.call('adder', 'sum', [1, 2]);
+    console.log(result1); // 3
 
     // - or -
-    const adder = client.bind('rpcQueueName');
-    const result2 = await adder.sum(1, 2);
-    console.log(result2); // 3
+    const rpcAdder = client.bind('adder');
+    const result2 = await rpcAdder.sum(4, 5);
+    console.log(result2); // 9
 
+    // cleanup...
     client.close();
     server.close();
+
+    await mq.close();
 }
 main();
 ```
 
-## PubSub
+## Error handling
+
+simplemq will automatically reconnect to the amqp server after connection loss.  Unfortunately, some things can go wrong when this happens.
+
+For example, create and consume a queue with an auto-expiration of 30 seconds. A 30 second network interruption would destroy your queue. After the connection is restored, simplemq will attempt to restore the consumer on the queue, but this will throw an error and kill the channel. You can respond to this type of error by listening for the `resumeError` event.
 
 ```js
-const {PubSub} = require('@flamescape/simplemq');
-const url = 'amqp://user:pass@127.0.0.1/';
+const mq = simplemq({url});
 
-async function main() {
-    const pubsub = new PubSub({url});
+mq.on('resumeError', err => {
+    // something bad happened
+    console.log('Error resuming after connection interruption:', err);
+});
 
-    const consumer = await pubsub.consume('testQueue', {prefetch:1}, msg => {
-        console.log(msg.json); // {hello: 'world'}
-        msg.ack();
-    });
-
-    await pubsub.publish('', 'testQueue', {hello:'world'});
-}
-main();
+await mq.assertQueue('testQueue', {expires: 1000})
+await mq.bindQueue('testQueue', 'myExchange', '#');
+const consumer = await mq.consume('testQueue', msg => {
+    msg.ack();
+});
 ```
+
+If this is likely to be a common problem in your project, simplemq provides an easy way to automatically assert, bind & consume an anonymous queue in a single call. When your connection is restored after a network interruption, simplemq will recreate this state and hopefully things will keep on moving.
+
+```js
+const mq = simplemq({url});
+
+const consumer = await mq.consume({
+    exchange: 'myExchange'
+}, msg => {
+    // Magic! a volatile anonymous queue is bound to the myExchange exchange.
+    //
+    // If the queue expires during a network interruption, all will be recreated
+    // when the connection is restored and this callback will continue to work.
+    //
+    // Keep in mind, messages added to your old auto-expiring queue will be lost
+    // - but you would have had that problem anyway.
+    msg.ack();
+});
+```
+
+## Cleaning up
+
+After you're finished using a consumer, call `.cancel()` on it to stop consuming and prevent auto-recovery.
+
+You can close down RPC servers & clients with the `.close()` method.  This will stop them from listening on their call & reply queues respectively.
+
+simplemq can sometimes have an idle amqp connection in the background after recently being used. You can force-close the amqp connection and prevent any further usage on the simplemq instance by calling `.close()`.  Attempting to use the simplemq instance after closing will throw an error (asynchronously, of course).
+
+Closing a simplemq instance without first closing any existing consumers/RPC is bad practice and could result in unexpected behaviour.
+
 
 # API
 
-- [Class: simplemq.RPCServer](#class-rpcserver)
-  - [new simplemq.RPCServer(options)](#new-simplemqrpcserveroptions)
-  - [server.wrap(queueName, host)](#serverwrap)
-  - [server.unwrap(queueName, host)](#serverunwrap)
-  - [server.unwrapAll()](#serverunwrapAll)
-  - [server.close()](#serverclose)
-- [Class: simplemq.RPCClient](#class-rpcclient)
-  - [new simplemq.RPCClient(options)](#new-simplemqrpcclientoptions)
-  - [client.call(queueName, method[, args][, options])](#clientcall)
-  - [client.bind(queueName)](#clientbind)
-  - [client.close()](#clientclose)
-- [Class: simplemq.PubSub](#class-pubsub)
-  - [new simplemq.PubSub(options)](#new-simplemqpubsuboptions)
-  - [pubsub.consume(queueName[, options], callback)](#pubsubconsume)
-  - [pubsub.publish(exchange, routingKey, content[, options])](#pubsubpublish)
-  - [pubsub.close()](#[pubsubclose)
-
-### Class: RPCServer
-
-### Class: RPCClient
-
-### Class: PubSub
+`// TODO: write API docs`
