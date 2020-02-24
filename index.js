@@ -1,6 +1,5 @@
-module.exports = {
-    RPCServer: require('./src/rpcserver'),
-    RPCClient: require('./src/rpcclient'),
-    Connection: require('./src/connection'),
-    PubSub: require('./src/pubsub'),
+const PubSub = require('./src/pubsub');
+
+module.exports = function(opts) {
+    return new PubSub(opts);
 };
