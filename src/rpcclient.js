@@ -3,8 +3,8 @@ const Connection = require('./connection');
 const debug = require('debug')('simplemq:rpcclient');
 
 class RPCClient {
-    constructor(pubsub, options = {}) {
-        this.pubsub = pubsub;
+    constructor(mq, options = {}) {
+        this.mq = mq;
         this.options = options;
         this.replyConsumer = null;
         this.calls = new Map();
@@ -19,7 +19,7 @@ class RPCClient {
     }
 
     async init() {
-        this.replyConsumer = await this.pubsub.consume({
+        this.replyConsumer = await this.mq.consume({
             expires: this.options.timeout,
             messageTtl: this.options.ackTimeout,
             exchange: 'simplemq.rpc',
@@ -102,7 +102,7 @@ class RPCClient {
         const call = {
             timeouts: []
         };
-        call.done = new Promise((res, rej) => {
+        call.settled = new Promise((res, rej) => {
             call.resolve = res;
             call.reject = rej;
         });
@@ -111,6 +111,7 @@ class RPCClient {
         if (ackTimeout) {
             // set ack timeout
             const ato = setTimeout(() => {
+                call.timeouts.forEach(clearTimeout);
                 call.reject(Error("RPC ACK Timeout"));
             }, ackTimeout);
             call.timeouts.push(ato);
@@ -122,12 +123,13 @@ class RPCClient {
         if (timeout) {
             // set reply timeout
             const rto = setTimeout(() => {
+                call.timeouts.forEach(clearTimeout);
                 call.reject(Error("RPC Response Timeout"));
             }, timeout);
             call.timeouts.push(rto);
         }
 
-        this.pubsub.sendToQueue(queueName, {
+        this.mq.sendToQueue(queueName, {
             method,
             args
         }, {
@@ -136,14 +138,10 @@ class RPCClient {
             correlationId: id
         }).catch(err => {
             call.reject(err);
-        });
-
-        call.done.finally(() => {
-            // cleanup any pending timeouts
             call.timeouts.forEach(clearTimeout);
         });
 
-        return call.done;
+        return call.settled;
     }
 }
 

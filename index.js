@@ -1,5 +1,5 @@
-const PubSub = require('./src/pubsub');
+const SimpleMQ = require('./src/simplemq');
 
 module.exports = function(opts) {
-    return new PubSub(opts);
+    return new SimpleMQ(opts);
 };

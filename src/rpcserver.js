@@ -3,9 +3,9 @@ const debug = require('debug')('simplemq:rpcserver');
 const EventEmitter = require('eventemitter3');
 
 class RPCServer extends EventEmitter {
-    constructor(pubsub) {
+    constructor(mq) {
         super();
-        this.pubsub = pubsub;
+        this.mq = mq;
         this.consumer = null;
     }
 
@@ -14,18 +14,18 @@ class RPCServer extends EventEmitter {
             throw Error(`Consumer already initiated`);
         }
 
-        await this.pubsub.assertQueue(queueName, {
+        await this.mq.assertQueue(queueName, {
             messageTtl: options.queueMessageTtl || 1000*30,
             expires: options.queueExpires || 1000*30
         });
 
-        this.consumer = await this.pubsub.consume(queueName, async (msg) => {
+        this.consumer = await this.mq.consume(queueName, async (msg) => {
             try {
                 if (!msg) { return; }
                 msg.ack();
 
                 // acknowledge call
-                this.pubsub.sendToQueue(
+                this.mq.sendToQueue(
                     msg.properties.replyTo,
                     Buffer.from(JSON.stringify({ack:true})),
                     {correlationId: msg.properties.correlationId}
@@ -56,7 +56,7 @@ class RPCServer extends EventEmitter {
                 });
 
                 // send result
-                this.pubsub.publish(
+                this.mq.publish(
                     'simplemq.rpc',
                     msg.properties.replyTo,
                     response,
