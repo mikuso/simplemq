@@ -7,9 +7,14 @@ class Connection extends EventEmitter {
     constructor({url}) {
         super();
         this.url = url;
+        this.isShutdown = false;
     }
 
     async getConnection({connect = true} = {}) {
+        if (connect && this.isShutdown) {
+            throw Error(`Can't get connection after shutdown`);
+        }
+
         if (!this.connection && connect) {
             this.connection = new Promise((resolve, reject) => {
                 debug(`New connection required`);
@@ -55,6 +60,10 @@ class Connection extends EventEmitter {
     }
 
     async getChannel() {
+        if (this.isShutdown) {
+            throw Error(`Can't get channel after connection shutdown`);
+        }
+
         if (!this.channel) {
             this.channel = new Promise(async (resolve, reject) => {
                 debug(`New channel required`);
@@ -81,6 +90,7 @@ class Connection extends EventEmitter {
     }
 
     async shutdown() {
+        this.isShutdown = true;
         const conn = await this.getConnection({connect: false});
         if (conn) {
             debug('Closing connection');
