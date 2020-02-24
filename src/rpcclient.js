@@ -99,7 +99,9 @@ class RPCClient {
 
         const id = uuid.v4();
 
-        const call = {};
+        const call = {
+            timeouts: []
+        };
         call.done = new Promise((res, rej) => {
             call.resolve = res;
             call.reject = rej;
@@ -108,9 +110,10 @@ class RPCClient {
 
         if (ackTimeout) {
             // set ack timeout
-            let ato = setTimeout(() => {
+            const ato = setTimeout(() => {
                 call.reject(Error("RPC ACK Timeout"));
             }, ackTimeout);
+            call.timeouts.push(ato);
             call.ack = () => {
                 clearTimeout(ato);
             };
@@ -118,9 +121,10 @@ class RPCClient {
 
         if (timeout) {
             // set reply timeout
-            setTimeout(() => {
+            const rto = setTimeout(() => {
                 call.reject(Error("RPC Response Timeout"));
             }, timeout);
+            call.timeouts.push(rto);
         }
 
         this.pubsub.sendToQueue(queueName, {
@@ -132,6 +136,11 @@ class RPCClient {
             correlationId: id
         }).catch(err => {
             call.reject(err);
+        });
+
+        call.done.finally(() => {
+            // cleanup any pending timeouts
+            call.timeouts.forEach(clearTimeout);
         });
 
         return call.done;
