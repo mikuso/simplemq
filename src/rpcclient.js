@@ -74,7 +74,7 @@ class RPCClient {
         }
     }
 
-    bind(queueName) {
+    bindExchange(exchange, routingKey) {
         const self = this;
         return new Proxy({}, {
             get: function(target, prop, receiver) {
@@ -82,10 +82,14 @@ class RPCClient {
                     return () => { return; };
                 }
                 return function(...args){
-                    return self.call(queueName, prop, args);
+                    return self.callExchange(exchange, routingKey, prop, args);
                 };
             }
         });
+    }
+
+    bind(queueName) {
+        return this.bindExchange('', queueName);
     }
 
     async callExchange(exchangeName, routingKey, method, args = [], options = {}) {
