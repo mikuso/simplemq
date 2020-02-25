@@ -88,7 +88,7 @@ class RPCClient {
         });
     }
 
-    async call(queueName, method, args = [], options = {}) {
+    async callExchange(exchangeName, routingKey, method, args = [], options = {}) {
         if (!Array.isArray(args)) {
             throw new TypeError(`args must be an Array`);
         }
@@ -129,7 +129,7 @@ class RPCClient {
             call.timeouts.push(rto);
         }
 
-        this.mq.sendToQueue(queueName, {
+        this.mq.publish(exchangeName, routingKey, {
             method,
             args
         }, {
@@ -142,6 +142,10 @@ class RPCClient {
         });
 
         return call.settled;
+    }
+
+    async call(queueName, method, args = [], options = {}) {
+        return await this.callExchange('', queueName, method, args, options);
     }
 }
 
