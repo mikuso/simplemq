@@ -65,6 +65,47 @@ async function main() {
 main();
 ```
 
+## RPC Fan-out
+
+In standard usage, simplemq's RPC follows the pattern of competing consumers. That is, if you have more than one RPC server bound to the same queue, then they will balance the load between themselves automatically.
+
+Another approach is to create an RPC server around an exchange rather than a queue. Under the hood, the RPC server will create an anonymous queue and bind it to the exchange for you, with all the usual connection keep-alive & recovery magic. If you have multiple RPC servers using the same exchange and routing key, they will each execute any instructions given (which may result in duplicate work being done). The response received by the client is from whichever server is first to complete the work.
+
+To do this, create a `direct` exchange and then follow the example below.
+
+Note: It's important to create a `direct` exchange rather than `fanout` or `topic` exchange.  `fanout` will send calls to all services on the same exchange. `topic` will add special meaning to some characters (`#`, `*`, `.`) in the routingKey which can confuse things.  `direct` will ensure a 1-to-1 mapping between client and server service with arbitrary service names.
+
+```js
+class HelloMachine {
+    constructor(msg) { this.msg = msg; }
+    hello() { return 'Hello ' + this.msg; }
+}
+
+const mq = simplemq({url});
+
+// If you want to use this approach, you must create your own 'direct' exchange first.
+await mq.assertExchange('rpc-fanout-test', 'direct');
+
+await mq.rpcServer({
+    exchange: 'rpc-fanout-test',
+    routingKey: 'helloMachine'
+}, new HelloMachine('Hello world'));
+
+await mq.rpcServer({
+    exchange: 'rpc-fanout-test',
+    routingKey: 'helloMachine'
+}, new HelloMachine('Hello universe'));
+
+const cli = await mq.rpcClient();
+
+// either ...
+await cli.callEx('rpc-fanout-test', 'helloMachine', 'hello', []); // 'Hello World!'
+
+// - or -
+const helloMachine = cli.bindEx('rpc-fanout-test', 'helloMachine');
+await helloMachine.hello(); // 'Hello World!'
+```
+
 ## Error handling
 
 simplemq will automatically reconnect to the amqp server after connection loss.  Unfortunately, some things can go wrong when this happens.

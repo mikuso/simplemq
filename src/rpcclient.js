@@ -74,7 +74,7 @@ class RPCClient {
         }
     }
 
-    bindExchange(exchange, routingKey) {
+    bindEx(exchange, routingKey) {
         const self = this;
         return new Proxy({}, {
             get: function(target, prop, receiver) {
@@ -82,17 +82,17 @@ class RPCClient {
                     return () => { return; };
                 }
                 return function(...args){
-                    return self.callExchange(exchange, routingKey, prop, args);
+                    return self.callEx(exchange, routingKey, prop, args);
                 };
             }
         });
     }
 
     bind(queueName) {
-        return this.bindExchange('', queueName);
+        return this.bindEx('', queueName);
     }
 
-    async callExchange(exchangeName, routingKey, method, args = [], options = {}) {
+    async callEx(exchangeName, routingKey, method, args = [], options = {}) {
         if (!Array.isArray(args)) {
             throw new TypeError(`args must be an Array`);
         }
@@ -149,7 +149,7 @@ class RPCClient {
     }
 
     async call(queueName, method, args = [], options = {}) {
-        return await this.callExchange('', queueName, method, args, options);
+        return await this.callEx('', queueName, method, args, options);
     }
 }
 
