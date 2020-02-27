@@ -14,10 +14,12 @@ class RPCServer extends EventEmitter {
             throw Error(`Consumer already initiated`);
         }
 
-        await this.mq.assertQueue(queueName, {
-            messageTtl: options.queueMessageTtl || 1000*30,
-            expires: options.queueExpires || 1000*30
-        });
+        if (typeof queueName === 'string') {
+            await this.mq.assertQueue(queueName, {
+                messageTtl: options.queueMessageTtl || 1000*30,
+                expires: options.queueExpires || 1000*30
+            });
+        }
 
         this.consumer = await this.mq.consume(queueName, async (msg) => {
             try {
