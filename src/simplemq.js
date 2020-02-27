@@ -148,7 +148,7 @@ class SimpleMQ extends EventEmitter {
     }
 
     async rpcServer(queueName, host, options = {}) {
-        await this.assertExchange('simplemq.rpc', 'topic');
+        await this.assertExchange('simplemq.rpc', 'direct');
         const server = new RPCServer(this);
         await server.init({
             queueName,
@@ -159,7 +159,7 @@ class SimpleMQ extends EventEmitter {
     }
 
     async rpcClient(options) {
-        await this.assertExchange('simplemq.rpc', 'topic');
+        await this.assertExchange('simplemq.rpc', 'direct');
         const client = new RPCClient(this, options);
         await client.init();
         return client;
