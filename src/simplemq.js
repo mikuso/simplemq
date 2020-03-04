@@ -207,6 +207,7 @@ class SimpleMQ extends EventEmitter {
         let cons, ctag;
         try {
             cons = await channel.consume(queueName, async (data) => {
+                if (!data) return; // occurs when queue is deleted
                 const msg = {};
                 let resolved = false;
                 msg.ack = (allUpTo = false) => {
