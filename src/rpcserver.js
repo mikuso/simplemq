@@ -27,7 +27,8 @@ class RPCServer extends EventEmitter {
                 msg.ack();
 
                 // acknowledge call
-                this.mq.sendToQueue(
+                this.mq.publish(
+                    'simplemq.rpc',
                     msg.properties.replyTo,
                     Buffer.from(JSON.stringify({ack:true})),
                     {correlationId: msg.properties.correlationId}
