@@ -30,7 +30,7 @@ class RPCServer extends EventEmitter {
                 this.mq.publish(
                     'simplemq.rpc',
                     msg.properties.replyTo,
-                    Buffer.from(JSON.stringify({ack:true})),
+                    {ack:true},
                     {correlationId: msg.properties.correlationId}
                 ).catch(()=>{}); // ignore failure sending acknowledgement
 
