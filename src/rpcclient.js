@@ -50,7 +50,8 @@ class RPCClient {
                     if (body.error) {
                         // The call resulted in an error
                         const err = Error(body.error.message);
-                        err.stack = body.error.stack;
+                        err.stack = call.stack;
+                        err.cause = body.error.stack;
                         err.code = body.error.code;
                         err.details = body.error.details;
                         return call.reject(err);
@@ -104,7 +105,8 @@ class RPCClient {
         const id = uuid.v4();
 
         const call = {
-            timeouts: []
+            timeouts: [],
+            stack: Error().stack,
         };
         call.settled = new Promise((res, rej) => {
             call.resolve = res;
