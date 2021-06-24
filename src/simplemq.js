@@ -250,6 +250,10 @@ class SimpleMQ extends EventEmitter {
             this._unregisterConsumer(consumer);
             return channel.cancel(ctag).catch(()=>{});
         };
+
+        consumer.check = async () => {
+            return channel.checkQueue(consumer.queueName);
+        };
     }
 
     _unregisterConsumer(consumer) {
