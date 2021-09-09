@@ -18,10 +18,6 @@ class SimpleMQ extends EventEmitter {
         this.channels = new ChannelManager();
     }
 
-    close() {
-        this.connections.close();
-    }
-
     async withChannel(channelName, asyncFunc) {
         if (typeof channelName === 'function') {
             asyncFunc = channelName;
@@ -158,11 +154,12 @@ class SimpleMQ extends EventEmitter {
             concurrency
         });
 
-        return new Promise((resolve, reject) => {
-            stream.on('error', reject);
-            stream.on('close', resolve);
-            stream.on('data', callback);
-        });
+        const ee = new EventEmitter();
+        stream.on('close', () => ee.emit('close'));
+        stream.on('error', (err) => ee.emit('error', err));
+        stream.on('data', callback);
+        ee.cancel = () => stream.destroy();
+        return ee;
     }
 
     async publish(exchange, routingKey, content, options = {}) {
