@@ -30,6 +30,7 @@ class ChannelManager {
 
             obj.promise.then(chan => {
                 debug(`Channel established:`, key);
+                chan.setMaxListeners(0);
                 chan.once('close', obj.dispose);
                 chan.on('error', err => debug(`Channel error:`, err.message));
             }).catch(obj.dispose);

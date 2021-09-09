@@ -1,5 +1,5 @@
 const uuid = require('uuid');
-const EventEmitter = require('events');
+const {setMaxListeners, EventEmitter} = require('events');
 const {Writable, Readable} = require('stream');
 const {setTimeout} = require('timers/promises');
 const eventStapler = require('eventstapler');
@@ -407,6 +407,9 @@ class SimpleMQ extends EventEmitter {
      */
     createPublisherStream({assertions, signal, channelName, recoveryRetries = 2, highWaterMark = 16}) {
         const publisher = this.definePublisher({channelName, assertions});
+        if (signal) {
+            setMaxListeners(0, signal);
+        }
 
         let isDestroyed = false;
 
@@ -458,6 +461,9 @@ class SimpleMQ extends EventEmitter {
      */
     createConsumerStream({queueName, assertions, options, signal, channelName, recoveryRetries = 2, concurrency = 1}) {
         const consumer = this.defineConsumer({channelName, assertions, queueName, consumerOptions: options, concurrency});
+        if (signal) {
+            setMaxListeners(0, signal);
+        }
 
         let isReading = false;
         let isDestroyed = false;
