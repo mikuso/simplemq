@@ -128,6 +128,28 @@ class SimpleMQ extends EventEmitter {
         const recoveryRetries = consumerOptions.recoveryRetries ?? 2;
         const assertions = consumerOptions.assertions ?? {};
 
+        if (typeof queueName !== 'string' && queueName.exchange) {
+            const exchangeName = queueName.exchange;
+            const routingKey = queueName.routingKey ?? '#';
+            queueName = exchangeName + '.consumer.' + uuid.v4();
+
+            assertions.queues ??= [];
+            assertions.queues.push({
+                name: queueName,
+                options: {
+                    durable: false,
+                    expires: 1000*30,
+                }
+            });
+
+            assertions.queueBindings ??= [];
+            assertions.queueBindings.push({
+                queue: queueName,
+                source: exchangeName,
+                pattern: routingKey,
+            });
+        }
+
         const stream = this.createConsumerStream({
             queueName,
             assertions,
