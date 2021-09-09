@@ -1,81 +1,134 @@
-const Connection = require('./connection');
+const uuid = require('uuid');
+const {pipeline, Writable} = require('stream');
+const EventEmitter = require('events');
+const {serializeError} = require('serialize-error');
+const ChannelAssertions = require('./channel-assertions');
 const debug = require('debug')('simplemq:rpcserver');
-const EventEmitter = require('eventemitter3');
 
 class RPCServer extends EventEmitter {
-    constructor(mq) {
+    constructor(mq, {identity, host, rpcExchangeName = 'simplemq2.rpc', channelName, signal, recoveryRetries = Infinity, concurrency = 1} = {}) {
         super();
         this.mq = mq;
-        this.consumer = null;
-    }
+        this.isClosed = false;
 
-    async init({queueName, host, options}) {
-        if (this.consumer) {
-            throw Error(`Consumer already initiated`);
-        }
+        const queueName = 'simplmq2.requests.' + uuid.v4();
 
-        if (typeof queueName === 'string') {
-            await this.mq.assertQueue(queueName, {
-                messageTtl: options.queueMessageTtl || 1000*30,
-                expires: options.queueExpires || 1000*30
-            });
-        }
+        const assertions = new ChannelAssertions({
+            exchanges: [
+                {
+                    name: rpcExchangeName,
+                    type: 'direct',
+                    options: {
+                        durable: false
+                    }
+                }
+            ],
+            queues: [
+                {
+                    name: queueName,
+                    options: {
+                        messageTtl: 1000*30,
+                        expires: 1000*30,
+                        durable: false
+                    }
+                }
+            ],
+            queueBindings: [
+                {
+                    queue: queueName,
+                    source: rpcExchangeName,
+                    pattern: identity,
+                }
+            ]
+        });
 
-        this.consumer = await this.mq.consume(queueName, async (msg) => {
-            try {
-                if (!msg) { return; }
-                msg.ack();
+        this.publisherStream = mq.createPublisherStream({assertions, signal, channelName, recoveryRetries, highWaterMark: concurrency});
+        this.publisherStream.on('error', this._onError.bind(this));
 
-                // acknowledge call
-                this.mq.publish(
-                    'simplemq.rpc',
-                    msg.properties.replyTo,
-                    {ack:true},
-                    {correlationId: msg.properties.correlationId}
-                ).catch(()=>{}); // ignore failure sending acknowledgement
+        this.consumerStream = mq.createConsumerStream({queueName, assertions, signal, channelName, recoveryRetries, concurrency});
 
-                const body = msg.json;
-                const response = {};
+        this.requestProcessorStream = new Writable({
+            objectMode: true,
+            write: async (msg, enc, cb) => {
                 try {
-                    this.emit('call', {
-                        method: body.method,
-                        args: body.args
+                    msg.ack();
+
+                    // acknowledge call
+                    this.publisherStream.write({
+                        exchange: rpcExchangeName,
+                        routingKey: msg.properties.replyTo,
+                        content: {ack:true},
+                        options: {correlationId: msg.properties.correlationId},
                     });
 
-                    response.result = await host[body.method](...body.args);
+                    const body = msg.json;
+                    const response = {};
+                    try {
+                        this.emit('call', {
+                            method: body.method,
+                            args: body.args
+                        });
+
+                        response.result = await host[body.method](...body.args);
+                    } catch (err) {
+                        response.error = serializeError(err);
+                    }
+
+                    this.emit('response', {
+                        method: body.method,
+                        args: body.args,
+                        response: response
+                    });
+
+                    // send result
+                    this.publisherStream.write({
+                        exchange: rpcExchangeName,
+                        routingKey: msg.properties.replyTo,
+                        content: response,
+                        options: {correlationId: msg.properties.correlationId},
+                    });
+
+                    cb();
                 } catch (err) {
-                    response.error = {
-                        message: err.message,
-                        code: err.code,
-                        stack: err.stack,
-                        details: err.details
-                    };
+                    cb(err);
                 }
-
-                this.emit('response', {
-                    method: body.method,
-                    args: body.args,
-                    response: response
-                });
-
-                // send result
-                this.mq.publish(
-                    'simplemq.rpc',
-                    msg.properties.replyTo,
-                    response,
-                    {correlationId: msg.properties.correlationId}
-                );
-            } catch (err) {
-                debug(`Error consuming RPC message:`, err.message);
             }
         });
+
+        pipeline(
+            this.consumerStream,
+            this.requestProcessorStream,
+            err => {
+                if (err) {
+                    if (err.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+                        // doesn't matter - this is a normal part of closing the consumer/request processor pipeline early
+                    } else {
+                        this._onError(err);
+                    }
+                }
+                this.close(err);
+            }
+        );
     }
 
-    close() {
-        if (this.consumer) {
-            this.consumer.cancel();
+    _onError(err) {
+        if (err.name === 'AbortError') {
+            // don't emit abort errors
+        } else {
+            this.emit('error', err);
         }
-        this.removeAllListeners();
+        // always close on error
+        this.close(err);
+    }
+
+    close(err) {
+        if (!this.isClosed) {
+            this.isClosed = true;
+            this.requestProcessorStream.destroy();
+            this.publisherStream.destroy();
+            this.consumerStream.destroy();
+            this.emit('close', err);
+        }
     }
 }
 
