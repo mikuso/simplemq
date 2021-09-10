@@ -52,13 +52,19 @@ class ConnectionManager {
         const obj = this._connections.get(key);
         if (!obj) return;
 
-        setTimeout(1000, obj.promise).then((connection) => {
+        setTimeout(1000).then(async () => {
             obj.stakeholders.delete(stakeholder);
             debug(`Removed stakeholder from connection:`, obj.name, `(${obj.stakeholders.size} stakeholder(s) total)`);
             if (!obj.stakeholders.size) {
                 debug(`Closing redundant connection:`, obj.name);
                 obj.dispose();
-                return connection.close();
+                try {
+                    const connection = await obj.promise;
+                    return connection.close();
+                } catch (err) {
+                    // Connection did not resolve, implying there is nothing to close.
+                    // We can safely ignore this error.
+                }
             }
         });
     }
