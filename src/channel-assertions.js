@@ -67,8 +67,8 @@ class ChannelAssertions {
         }
     }
 
-    async assertTo(channel) {
-        if (!this.assertedTo.has(channel)) {
+    async assertTo(channel, force = false) {
+        if (!this.assertedTo.has(channel) || force) {
             const performing = this.performAssertions(channel).catch(err => {
                 if (this.assertedTo.get(channel) === performing) {
                     this.assertedTo.delete(channel);

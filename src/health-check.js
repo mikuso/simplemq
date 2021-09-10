@@ -6,7 +6,7 @@ class HealthCheck extends EventEmitter {
         super();
         this.alive = true;
 
-        this.identity = 'heathcheck.'+uuid.v4();
+        this.identity = 'healthcheck.'+uuid.v4();
         this.host = {ping: (...args)=>args};
 
         this.cli = mq.rpcClient({signal});

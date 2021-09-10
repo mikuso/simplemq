@@ -55,7 +55,7 @@ class RPCServer extends EventEmitter {
 
                     // acknowledge call
                     this.publisherStream.write({
-                        exchange: rpcExchangeName,
+                        exchange: '',
                         routingKey: msg.properties.replyTo,
                         content: {ack:true},
                         options: {correlationId: msg.properties.correlationId},
@@ -82,7 +82,7 @@ class RPCServer extends EventEmitter {
 
                     // send result
                     this.publisherStream.write({
-                        exchange: rpcExchangeName,
+                        exchange: '',
                         routingKey: msg.properties.replyTo,
                         content: response,
                         options: {correlationId: msg.properties.correlationId},

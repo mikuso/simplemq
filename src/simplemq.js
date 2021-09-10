@@ -227,7 +227,7 @@ class SimpleMQ extends EventEmitter {
         return new RPCClient(this, options);
     }
 
-    definePublisher({channelName, assertions, releaseTimeout = 1000*2} = {}) {
+    definePublisher({channelName, assertions, releaseTimeout = 1000*2, reassertOnReturn = false} = {}) {
         if (!(assertions instanceof ChannelAssertions)) {
             assertions = new ChannelAssertions(assertions);
         }
@@ -252,7 +252,14 @@ class SimpleMQ extends EventEmitter {
                 usableChannels.add(channel);
 
                 // perform assertions
-                await assertions.assertTo(channel);
+                await assertions.assertTo(channel, true);
+
+                if (reassertOnReturn) {
+                    channel.once('return', (msg) => {
+                        // message didn't route anywhere - flag for reassertions upon next use
+                        usableChannels.delete(channel);
+                    });
+                }
             }
         };
 
@@ -271,6 +278,10 @@ class SimpleMQ extends EventEmitter {
 
                 if (!options.timestamp) {
                     options.timestamp = Date.now();
+                }
+
+                if (reassertOnReturn) {
+                    options.mandatory = true;
                 }
 
                 // recover (if necessary)
@@ -424,8 +435,8 @@ class SimpleMQ extends EventEmitter {
      * @param  {number} recoveryRetries [default=2] The number of times to try re-try recovering a dead channel after the channel fails. (0 = Will try recovery once, but no retries.)
      * @return {Writable}            Writable stream
      */
-    createPublisherStream({assertions, signal, channelName, recoveryRetries = 2, highWaterMark = 16}) {
-        const publisher = this.definePublisher({channelName, assertions});
+    createPublisherStream({assertions, signal, channelName, recoveryRetries = 2, highWaterMark = 16, reassertOnReturn = false}) {
+        const publisher = this.definePublisher({channelName, assertions, reassertOnReturn});
         if (signal) {
             setMaxListeners(0, signal);
         }

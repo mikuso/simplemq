@@ -120,7 +120,8 @@ mq.createPublisherStream({
     signal, // (optional) AbortSignal
     channelName, // (optional) a name to identify the channel this consumer will run on (if not specified, will use the default channel)
     recoveryRetries: 2, // (optional) how many times to re-try recovery upon service failure
-    highWaterMark: 16 // (optional) the number of messages this stream will buffer while waiting for amqplib's `publish()` buffer to drain
+    highWaterMark: 16, // (optional) the number of messages this stream will buffer while waiting for amqplib's `publish()` buffer to drain
+    reassertOnReturn: false // (optional) causes assertions to be automatically re-performed if messages are not routed to any queue (also adds `mandatory` flag to every published message)
 });
 ```
 
