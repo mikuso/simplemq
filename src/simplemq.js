@@ -211,7 +211,7 @@ class SimpleMQ extends EventEmitter {
         });
     }
 
-    createHealthCheck({signal}) {
+    createHealthCheck({signal} = {}) {
         return new HealthCheck(this, {signal});
     }
 
