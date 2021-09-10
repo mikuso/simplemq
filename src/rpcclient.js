@@ -39,13 +39,6 @@ class RPCClient extends EventEmitter {
                         durable: false,
                     }
                 }
-            ],
-            queueBindings: [
-                {
-                    queue: queueName,
-                    source: rpcExchangeName,
-                    pattern: queueName,
-                }
             ]
         });
 
