@@ -171,7 +171,7 @@ class RPCClient extends EventEmitter {
 
         if (ackTimeout) {
             // set ack timeout
-            const timeoutErr = Error("RPC ACK Timeout");
+            const timeoutErr = Error(`RPC Acknowledgement Timeout: ${routingKey}.${method}`);
             const ato = setTimeout(() => {
                 call.timeouts.forEach(clearTimeout);
                 call.reject(timeoutErr);
@@ -184,7 +184,7 @@ class RPCClient extends EventEmitter {
 
         if (timeout) {
             // set reply timeout
-            const timeoutErr = Error("RPC Response Timeout");
+            const timeoutErr = Error(`RPC Response Timeout: ${routingKey}.${method}`);
             const rto = setTimeout(() => {
                 call.timeouts.forEach(clearTimeout);
                 call.reject(timeoutErr);
