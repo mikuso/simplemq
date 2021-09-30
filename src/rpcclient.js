@@ -43,6 +43,8 @@ class RPCClient extends EventEmitter {
         });
 
         this.publisherStream = mq.createPublisherStream({assertions, signal, channelName, recoveryRetries, highWaterMark: concurrency});
+        this.publisherStream.on('error', err => this._onError(err));
+
         this.consumerStream = mq.createConsumerStream({queueName, assertions, signal, channelName, recoveryRetries, concurrency});
 
         this.responseProcessorStream = new Writable({
@@ -169,9 +171,10 @@ class RPCClient extends EventEmitter {
 
         if (ackTimeout) {
             // set ack timeout
+            const timeoutErr = Error("RPC ACK Timeout");
             const ato = setTimeout(() => {
                 call.timeouts.forEach(clearTimeout);
-                call.reject(Error("RPC ACK Timeout"));
+                call.reject(timeoutErr);
             }, ackTimeout);
             call.timeouts.push(ato);
             call.ack = () => {
@@ -181,9 +184,10 @@ class RPCClient extends EventEmitter {
 
         if (timeout) {
             // set reply timeout
+            const timeoutErr = Error("RPC Response Timeout");
             const rto = setTimeout(() => {
                 call.timeouts.forEach(clearTimeout);
-                call.reject(Error("RPC Response Timeout"));
+                call.reject(timeoutErr);
             }, timeout);
             call.timeouts.push(rto);
         }
