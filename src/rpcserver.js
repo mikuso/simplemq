@@ -55,25 +55,27 @@ class RPCServer extends EventEmitter {
 
                     // acknowledge call
                     this.publisherStream.write({
-                        exchangeName: '',
+                        exchange: '',
                         routingKey: msg.properties.replyTo,
                         content: {ack:true},
                         options: {correlationId: msg.properties.correlationId},
                     });
 
-                    const body = msg.json;
-                    const response = {};
+                    // IIFE
+                    (async () => {
+                        const body = msg.json;
+                        const response = {};
+                        try {
+                            this.emit('call', {
+                                method: body.method,
+                                args: body.args
+                            });
 
-                    this.emit('call', {
-                        method: body.method,
-                        args: body.args
-                    });
+                            response.result = await host[body.method](...body.args);
+                        } catch (err) {
+                            response.error = serializeError(err);
+                        }
 
-                    Promise.resolve(host[body.method](...body.args)).then(result => {
-                        response.result = result;
-                    }).catch(err => {
-                        response.error = serializeError(err);
-                    }).finally(() => {
                         this.emit('response', {
                             method: body.method,
                             args: body.args,
@@ -82,12 +84,12 @@ class RPCServer extends EventEmitter {
 
                         // send result
                         this.publisherStream.write({
-                            exchangeName: '',
+                            exchange: '',
                             routingKey: msg.properties.replyTo,
                             content: response,
                             options: {correlationId: msg.properties.correlationId},
                         });
-                    });
+                    })().catch(err => this._onError(err));
 
                     cb();
                 } catch (err) {
