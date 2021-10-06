@@ -55,7 +55,7 @@ class RPCServer extends EventEmitter {
 
                     // acknowledge call
                     this.publisherStream.write({
-                        exchange: '',
+                        exchangeName: '',
                         routingKey: msg.properties.replyTo,
                         content: {ack:true},
                         options: {correlationId: msg.properties.correlationId},
@@ -63,29 +63,30 @@ class RPCServer extends EventEmitter {
 
                     const body = msg.json;
                     const response = {};
-                    try {
-                        this.emit('call', {
-                            method: body.method,
-                            args: body.args
-                        });
 
-                        response.result = await host[body.method](...body.args);
-                    } catch (err) {
-                        response.error = serializeError(err);
-                    }
-
-                    this.emit('response', {
+                    this.emit('call', {
                         method: body.method,
-                        args: body.args,
-                        response: response
+                        args: body.args
                     });
 
-                    // send result
-                    this.publisherStream.write({
-                        exchange: '',
-                        routingKey: msg.properties.replyTo,
-                        content: response,
-                        options: {correlationId: msg.properties.correlationId},
+                    Promise.resolve(host[body.method](...body.args)).then(result => {
+                        response.result = result;
+                    }).catch(err => {
+                        response.error = serializeError(err);
+                    }).finally(() => {
+                        this.emit('response', {
+                            method: body.method,
+                            args: body.args,
+                            response: response
+                        });
+
+                        // send result
+                        this.publisherStream.write({
+                            exchangeName: '',
+                            routingKey: msg.properties.replyTo,
+                            content: response,
+                            options: {correlationId: msg.properties.correlationId},
+                        });
                     });
 
                     cb();
