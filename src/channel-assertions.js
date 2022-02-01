@@ -37,14 +37,14 @@ class ChannelAssertions {
     addQueueBinding(binding) {
         if (!binding.queue) throw Error("Bad assertion: Missing binding.queue");
         if (!binding.source) throw Error("Bad assertion: Missing binding.source");
-        if (!binding.pattern) throw Error("Bad assertion: Missing binding.pattern");
+        if (binding.pattern === undefined) throw Error("Bad assertion: Missing binding.pattern");
         this.queueBindings.push(binding);
     }
 
     addExchangeBinding(binding) {
         if (!binding.destination) throw Error("Bad assertion: Missing binding.destination");
         if (!binding.source) throw Error("Bad assertion: Missing binding.source");
-        if (!binding.pattern) throw Error("Bad assertion: Missing binding.pattern");
+        if (binding.pattern === undefined) throw Error("Bad assertion: Missing binding.pattern");
         this.exchangeBindings.push(binding);
     }
 
